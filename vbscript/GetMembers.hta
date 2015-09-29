@@ -1,0 +1,131 @@
+<head>
+<title>Get members for group</title>
+<HTA:APPLICATION 
+     APPLICATIONNAME="Get members for group"
+     SCROLL="no"
+     SINGLEINSTANCE="yes"
+     WINDOWSTATE="normal">
+</head>
+
+
+<SCRIPT LANGUAGE="VBScript">
+Dim DocumentLocation, LogFile, objShell_wscript, fso
+Set objShell_wscript= CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+Sub Window_onLoad
+    window.resizeTo 300,150
+	DocumentLocation = document.location
+	DocumentLocation = fso.GetParentFolderName(Right(document.location,Len(document.location)-8))
+	DocumentLocation = Replace(DocumentLocation,"/","\")
+End Sub
+
+Sub GetGroupObject
+	Set LogFile = fso.CreateTextFile(DocumentLocation & "\Members_" & Input_Group.value & ".txt", true)
+
+	Set Checkbox = document.getElementById("CheckSubGroups")
+	
+	' If the user has checked the "Check -R, -X, -A" these will be appended to the groupname.
+	If (Checkbox.checked) Then
+		' Check for members in the write-group
+		CurrentGroup_DN = Func_GetDN(Input_Group.value & "-X")
+		Set GroupObject = SetUp_Object(CurrentGroup_DN)
+		ListMembers GroupObject, LogFile
+		
+		' Check for members in the read-only group
+		CurrentGroup_DN = Func_GetDN(Input_Group.value & "-R")
+		Set GroupObject = SetUp_Object(CurrentGroup_DN)
+		ListMembers GroupObject, LogFile
+		
+		' Check for members in the administrative group
+		CurrentGroup_DN = Func_GetDN(Input_Group.value & "-A")
+		Set GroupObject = SetUp_Object(CurrentGroup_DN)
+		ListMembers GroupObject, LogFile
+	Else
+		' Check the exact name the user has entered.
+		CurrentGroup_DN = Func_GetDN(Input_Group.value)
+		Set GroupObject = SetUp_Object(CurrentGroup_DN)
+		ListMembers GroupObject, LogFile
+	End If
+	
+	LogFile.Close
+	MsgBox "Done. See log: " & DocumentLocation & "\Members_" & Input_Group.value & ".txt"
+End Sub
+
+Function Func_GetDN(strName)
+	' Constants for the NameTranslate object
+	Const ADS_NAME_INITTYPE_GC = 3
+	Const ADS_NAME_TYPE_NT4 = 3
+	Const ADS_NAME_TYPE_1779 = 1
+
+	' Use the NameTranslate object to convert the NT user name to the
+	' Distinguished Name required for the LDAP provider
+	Set objTrans = CreateObject("NameTranslate")
+
+	'  Initialize NameTranslate by locating the Global Catalog
+	objTrans.Init ADS_NAME_INITTYPE_GC, ""
+
+	'  Use the Set method to specify the NT format of the object name
+	objTrans.Set ADS_NAME_TYPE_NT4, "vcn\" & strName
+
+	'  Use the Get method to retrieve the RPC 1779 Distinguished Name
+	Func_GetDN = objTrans.Get(ADS_NAME_TYPE_1779)
+End Function
+
+
+' Create a objectreference to the group.
+Function SetUp_Object (ObjectDN)
+	Err.Clear
+	ObjectPath = "LDAP://" & ObjectDN
+	'MsgBox "Retrieving object. (" & ObjectPath & ")" 
+	Set SetUp_Object = GetObject(ObjectPath)
+
+	If Err.number <> vbEmpty then
+		MsgBox "Failed to retrieve object. (" & ObjectPath & ")" 
+	End If
+End Function
+
+Function ListMembers (TargetGroup, LogFile)
+	Set MemberList = TargetGroup.Members
+
+	LogFile.WriteLine Right(TargetGroup.Name, Len(TargetGroup.Name)-3) & vbTab & "Members: " & MemberList.Count
+	For Each Member in MemberList
+		LogFile.WriteLine Right(Member.Name, Len(Member.Name)-3) & vbTab & Member.displayName
+	Next
+	LogFile.WriteLine ""
+	
+End Function
+</SCRIPT>
+
+<SCRIPT LANGUAGE="JavaScript">
+// This checks to see if the user has pressed Enter while in the input box. If so, adding it to the list.
+function CheckKeyDown(target) {
+	if (event.keyCode == 13) {
+		if(target == "group") {
+			AddToQueue_Group();
+		}
+		if(target == "user") {
+			AddToQueue_User();
+		}
+	}
+}
+</SCRIPT>
+
+<style lang="text/css">
+	#MadeBy {text-align: center; width: 100%; font-size: 12px;}
+	label {float:left; padding-left: 5px;}
+	.button {width: 100px;}
+	td {font-size: 14px;}
+</style>
+<body>
+	<div id="MainBox">
+		<div id="GroupBox">
+			
+			<table cellpadding="0" cellspacing="0">
+				<tr><td><label for="Input_Group">Groupname:</label></td><td><input class="Input_Text" type="text" name="Input_Group" onkeydown="CheckKeyDown('group')"></td></tr>
+				<tr><td><label for="CheckSubGroups">Check -R, -X, -A:</label></td><td><input class="Input_Text" type="checkbox" id="CheckSubGroups" name="CheckSubGroups"></td></tr>
+				<tr><td></td><td><input class="button" type="button" value="Get Members" onClick="GetGroupObject"></td></tr>
+			</table>
+		</div>
+		<div><span id="MadeBy">Created by Mikael Aspehed</span></div>
+	</div>
+</body>
